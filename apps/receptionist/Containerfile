@@ -1,23 +1,21 @@
-# Stage 1: Build dependencies
-FROM cgr.dev/chainguard/python:latest-dev AS build
+# Stage 1: Install Python dependencies
+FROM cgr.dev/chainguard/python:latest-dev@sha256:e2736acdf97f2b1cb59545f4f26317b18a953e90e59fa4c212a782315b248111 AS build
 
-USER root
+WORKDIR /home/nonroot/app
 
-WORKDIR /app
+COPY --chown=65532:65532 requirements.txt .
 
-COPY requirements.txt .
-
-RUN python -m venv /venv \
-    && /venv/bin/pip install \
+RUN python -m venv /home/nonroot/venv \
+    && /home/nonroot/venv/bin/pip install \
        --no-cache-dir \
        -r requirements.txt
 
 # Stage 2: Minimal runtime
-FROM cgr.dev/chainguard/python:latest
+FROM cgr.dev/chainguard/python:latest@sha256:f33049a06b10d6bd729e08a181094774ca5e9c7b0cf1bbe674aa977cd5258daa
 
 WORKDIR /app
 
-COPY --from=build /venv /venv
+COPY --from=build /home/nonroot/venv /venv
 COPY --chown=65532:65532 app/ /app/app/
 
 ENV PATH="/venv/bin:${PATH}" \
