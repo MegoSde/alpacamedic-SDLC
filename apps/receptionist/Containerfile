@@ -1,19 +1,33 @@
-FROM docker.io/library/python:3.13-slim
+# Stage 1: Build dependencies
+FROM cgr.dev/chainguard/python:latest-dev AS build
+
+USER root
 
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
 
-RUN useradd --system --uid 10001 appuser
+RUN python -m venv /venv \
+    && /venv/bin/pip install \
+       --no-cache-dir \
+       -r requirements.txt
 
-COPY --chown=appuser:appuser app/ ./app/
+# Stage 2: Minimal runtime
+FROM cgr.dev/chainguard/python:latest
 
-RUN find /app/app -type d -exec chmod 755 {} \; \
-    && find /app/app -type f -exec chmod 644 {} \;
+WORKDIR /app
 
-USER appuser
+COPY --from=build /venv /venv
+COPY --chown=65532:65532 app/ /app/app/
 
-EXPOSE 8700
+ENV PATH="/venv/bin:${PATH}" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8700"]
+USER 65532:65532
+
+EXPOSE 8000
+
+ENTRYPOINT ["/venv/bin/python", "-m", "uvicorn", \
+            "app.main:app", "--host", "0.0.0.0", \
+            "--port", "8000"]
