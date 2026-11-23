@@ -1,0 +1,98 @@
+
+name: Production Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      staging_commit:
+        description: "Approved staging commit SHA"
+        required: true
+        type: string
+      image:
+        description: "Approved GHCR image@sha256:digest"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  production:
+    name: Deploy Approved Image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify release identity
+        env:
+          STAGING_COMMIT: ${{ inputs.staging_commit }}
+          IMAGE: ${{ inputs.image }}
+        run: |
+          set -euo pipefail
+
+          [[ "$STAGING_COMMIT" =~ ^[a-fA-F0-9]{40}$ ]]
+
+          git merge-base --is-ancestor \
+            "$STAGING_COMMIT" HEAD
+
+          PREFIX="ghcr.io/${GITHUB_REPOSITORY,,}/receptionist@sha256:"
+          [[ "$IMAGE" == "$PREFIX"* ]]
+
+          DIGEST="${IMAGE#"$PREFIX"}"
+          [[ "$DIGEST" =~ ^[a-fA-F0-9]{64}$ ]]
+
+      - name: Pull approved image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ inputs.image }}
+          STAGING_COMMIT: ${{ inputs.staging_commit }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io \
+            -u "$GITHUB_ACTOR" --password-stdin
+
+          REPO="ghcr.io/${GITHUB_REPOSITORY,,}/receptionist"
+
+          docker pull "$REPO:rc-$STAGING_COMMIT"
+          docker pull "$IMAGE"
+
+          docker image inspect \
+            "$REPO:rc-$STAGING_COMMIT" \
+            --format '{{json .RepoDigests}}' \
+            | grep -F "$IMAGE"
+
+      - name: Start production candidate
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          docker run -d \
+            --name receptionist-production \
+            -p 127.0.0.1:8700:8700 \
+            "$IMAGE"
+
+      - name: Production smoke test
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS \
+              http://127.0.0.1:8700/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs receptionist-production
+          exit 1
+
+      - name: Deployment summary
+        env:
+          IMAGE: ${{ inputs.image }}
+        run: |
+          echo "### Approved production candidate" \
+            >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$IMAGE\`" >> "$GITHUB_STEP_SUMMARY"
+
