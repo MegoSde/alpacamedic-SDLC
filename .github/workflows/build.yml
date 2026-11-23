@@ -1,0 +1,74 @@
+name: Build and SBOM
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - staging
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+
+          curl -sSfL https://get.anchore.io/syft \
+            | sudo sh -s -- -b /usr/local/bin
+
+          curl -sSfL https://get.anchore.io/grype \
+            | sudo sh -s -- -b /usr/local/bin
+
+      - name: Build image
+        run: |
+          mkdir -p reports
+
+          podman build \
+            --pull=always \
+            --no-cache \
+            -t localhost/receptionist:${{ github.sha }} \
+            -f apps/receptionist/Containerfile \
+            apps/receptionist/
+
+          podman save \
+            --format oci-archive \
+            -o reports/receptionist.oci.tar \
+            localhost/receptionist:${{ github.sha }}
+
+      - name: Generate SBOM
+        run: |
+          syft scan \
+            oci-archive:reports/receptionist.oci.tar \
+            -o cyclonedx-json=reports/receptionist.sbom.json
+
+      - name: Scan vulnerabilities
+        run: |
+          grype sbom:reports/receptionist.sbom.json \
+            -o json > reports/receptionist.grype.json
+
+      - name: Enforce vulnerability policy
+        run: |
+          grype sbom:reports/receptionist.sbom.json \
+            --fail-on critical
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: receptionist-security-reports
+          path: |
+            reports/receptionist.sbom.json
+            reports/receptionist.grype.json
+          if-no-files-found: warn
+          retention-days: 30
