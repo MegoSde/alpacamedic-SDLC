@@ -1,0 +1,12 @@
+target-version = "py313"
+line-length = 88
+
+[lint]
+select = [
+    "E4",  # Importfejl
+    "E7",  # Statement-fejl
+    "E9",  # Syntakslignende fejl
+    "F",   # Pyflakes
+    "I",   # Importsortering
+    "B",   # Bugbear
+]
