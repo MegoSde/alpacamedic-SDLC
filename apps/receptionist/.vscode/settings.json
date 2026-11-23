@@ -1,7 +1,0 @@
-{
-    "semgrep.scan.onlyGitDirty": false,
-    "semgrep.scan.configuration": [
-        "p/python",
-        "p/security-audit"
-    ]
-}

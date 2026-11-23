@@ -1,0 +1,16 @@
+repos:
+  - repo: local
+    hooks:
+      - id: python-check
+        name: Python Syntax, Linting and Formatting
+        entry: bash scripts/python-check.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: semgrep
+        name: Semgrep Python Security Scan
+        entry: bash scripts/semgrep-check.sh
+        language: system
+        pass_filenames: false
+        always_run: true

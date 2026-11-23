@@ -1,9 +1,6 @@
 from fastapi import FastAPI
 
-app = FastAPI(
-    title="AlpacaMedic Receptionist",
-    version="0.1.0"
-)
+app = FastAPI(title="AlpacaMedic Receptionist", version="0.1.0")
 
 
 @app.get("/health")
