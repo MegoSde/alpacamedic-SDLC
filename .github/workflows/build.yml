@@ -55,6 +55,32 @@ jobs:
           grype sbom:reports/receptionist.sbom.json \
             -o json > reports/receptionist.grype.json
 
+      - name: Show scanner diagnostics
+        run: |
+          echo "=== Git commit ==="
+          git rev-parse HEAD
+
+          echo "=== Scanner versions ==="
+          syft version
+          grype version
+
+          echo "=== Vulnerability database ==="
+          grype db status
+
+          echo "=== Critical vulnerabilities ==="
+          grype sbom:reports/receptionist.sbom.json \
+            -o json | jq -r '
+              .matches[]
+              | select(.vulnerability.severity == "Critical")
+              | [
+                  .artifact.name,
+                  .artifact.version,
+                  .vulnerability.id,
+                  .vulnerability.severity
+                ]
+              | @tsv
+            '
+
       - name: Enforce vulnerability policy
         run: |
           grype sbom:reports/receptionist.sbom.json \
@@ -62,7 +88,7 @@ jobs:
 
       - name: Upload reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: receptionist-security-reports
           path: |
