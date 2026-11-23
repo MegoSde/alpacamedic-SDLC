@@ -137,7 +137,7 @@ jobs:
         run: |
           for i in $(seq 1 20); do
             if docker exec receptionist /venv/bin/python \
-              -c "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8700/health').status == 200"; then
+              -c "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8000/health').status == 200"; then
               exit 0
             fi
             sleep 2
@@ -156,7 +156,7 @@ jobs:
             -v "$PWD/reports:/zap/wrk:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-              -t http://receptionist:8700/health \
+              -t http://receptionist:8000/health \
               -m 1 \
               -I \
               -r zap-report.html \
