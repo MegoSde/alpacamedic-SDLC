@@ -1,0 +1,48 @@
+name: Source Security Checks
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - staging
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  source-checks:
+    name: Source Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install security tools
+        run: |
+          mkdir -p "$HOME/.venvs"
+
+          for tool in ruff semgrep pip-audit; do
+            python -m venv "$HOME/.venvs/$tool"
+            "$HOME/.venvs/$tool/bin/python" -m pip install "$tool"
+          done
+
+          python -m pip install pre-commit
+
+      - name: Install application dependencies
+        run: |
+          python -m venv apps/receptionist/.venv
+
+          apps/receptionist/.venv/bin/python \
+            -m pip install \
+            -r apps/receptionist/requirements-dev.txt
+
+      - name: Run security and quality checks
+        run: |
+          pre-commit run --all-files

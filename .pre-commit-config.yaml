@@ -1,0 +1,43 @@
+repos:
+  - repo: local
+    hooks:
+      - id: python-check
+        name: Python Syntax, Linting and Formatting
+        entry: bash scripts/python-check.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: semgrep
+        name: Semgrep Python Security Scan
+        entry: bash scripts/semgrep-check.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: pip-audit
+        name: Python Dependency Vulnerability Audit
+        entry: bash scripts/pip-audit-check.sh
+        language: system
+        files: '(^|/)(requirements[^/]*\.txt)$'
+        pass_filenames: false
+
+      - id: pytest
+        name: Python Unit Tests
+        entry: bash scripts/pytest-check.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: image-base
+        name: Validate base image policy
+        entry: bash scripts/check-base-images.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.2
+    hooks:
+      - id: gitleaks
+        args: ["--redact"]

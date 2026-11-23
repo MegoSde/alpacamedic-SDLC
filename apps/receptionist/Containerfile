@@ -1,0 +1,31 @@
+# Stage 1: Install Python dependencies
+FROM cgr.dev/chainguard/python:latest-dev@sha256:e2736acdf97f2b1cb59545f4f26317b18a953e90e59fa4c212a782315b248111 AS build
+
+WORKDIR /home/nonroot/app
+
+COPY --chown=65532:65532 requirements.txt .
+
+RUN python -m venv /home/nonroot/venv \
+    && /home/nonroot/venv/bin/pip install \
+       --no-cache-dir \
+       -r requirements.txt
+
+# Stage 2: Minimal runtime
+FROM cgr.dev/chainguard/python:latest@sha256:f33049a06b10d6bd729e08a181094774ca5e9c7b0cf1bbe674aa977cd5258daa
+
+WORKDIR /app
+
+COPY --from=build /home/nonroot/venv /venv
+COPY --chown=65532:65532 app/ /app/app/
+
+ENV PATH="/venv/bin:${PATH}" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+USER 65532:65532
+
+EXPOSE 8000
+
+ENTRYPOINT ["/venv/bin/python", "-m", "uvicorn", \
+            "app.main:app", "--host", "0.0.0.0", \
+            "--port", "8000"]

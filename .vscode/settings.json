@@ -1,0 +1,13 @@
+{
+    "semgrep.scan.onlyGitDirty": false,
+    "semgrep.scan.configuration": [
+        "p/python",
+        "p/security-audit"
+    ],
+    "ruff.enable": true,
+    "ruff.lint.enable": true,
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true
+    }
+}
