@@ -1,18 +1,18 @@
 
-name: Development to Staging
+name: Staging Release
 
 on:
   push:
-    branches:
-      - develop
+    branches: [staging]
 
 permissions:
   contents: read
 
 jobs:
-  publish:
-    name: Build and Publish
+  release:
+    name: Build and Publish Release
     runs-on: ubuntu-latest
+
     permissions:
       contents: read
       packages: write
@@ -34,7 +34,7 @@ jobs:
           curl -sSfL https://get.anchore.io/grype \
             | sudo sh -s -- -b /usr/local/bin
 
-      - name: Build image
+      - name: Build release candidate
         run: |
           mkdir -p reports
 
@@ -52,7 +52,7 @@ jobs:
           syft scan oci-archive:reports/receptionist.oci.tar \
             -o cyclonedx-json=reports/receptionist.sbom.json
 
-      - name: Scan vulnerabilities
+      - name: Grype security gate
         run: |
           grype sbom:reports/receptionist.sbom.json \
             -o json > reports/grype.json
@@ -69,31 +69,41 @@ jobs:
             -u "$GITHUB_ACTOR" --password-stdin
 
           IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/receptionist"
+          TAG="rc-${GITHUB_SHA}"
 
           podman tag \
-            localhost/receptionist:${{ github.sha }} \
-            "$IMAGE:${{ github.sha }}"
+            localhost/receptionist:${GITHUB_SHA} \
+            "$IMAGE:$TAG"
 
-          podman push \
-            --digestfile /tmp/image-digest.txt \
-            "$IMAGE:${{ github.sha }}"
+          podman push --digestfile /tmp/digest.txt \
+            "$IMAGE:$TAG"
 
-          DIGEST=$(cat /tmp/image-digest.txt)
-          echo "image=$IMAGE@$DIGEST" >> "$GITHUB_OUTPUT"
+          DIGEST=$(cat /tmp/digest.txt)
+          REF="$IMAGE@$DIGEST"
 
-      - name: Upload build reports
+          echo "image=$REF" >> "$GITHUB_OUTPUT"
+          echo "$REF" > reports/release-image.txt
+          echo "$GITHUB_SHA" > reports/staging-commit.txt
+
+          echo "### Release candidate" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$REF\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload release evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: build-security-reports
+          name: staging-release-evidence
           path: |
             reports/receptionist.sbom.json
             reports/grype.json
+            reports/release-image.txt
+            reports/staging-commit.txt
+          if-no-files-found: warn
           retention-days: 30
 
   staging:
-    name: Staging - OWASP ZAP
-    needs: publish
+    name: Staging - ZAP
+    needs: release
     runs-on: ubuntu-latest
     environment: staging
 
@@ -102,10 +112,10 @@ jobs:
       packages: read
 
     steps:
-      - name: Pull approved image
+      - name: Pull release candidate
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          IMAGE: ${{ needs.publish.outputs.image }}
+          IMAGE: ${{ needs.release.outputs.image }}
         run: |
           echo "$GH_TOKEN" | docker login ghcr.io \
             -u "$GITHUB_ACTOR" --password-stdin
@@ -114,7 +124,7 @@ jobs:
 
       - name: Start staging application
         env:
-          IMAGE: ${{ needs.publish.outputs.image }}
+          IMAGE: ${{ needs.release.outputs.image }}
         run: |
           docker network create staging-net
 
@@ -123,7 +133,20 @@ jobs:
             --network staging-net \
             "$IMAGE"
 
-      - name: Run OWASP ZAP Baseline
+      - name: Smoke test
+        run: |
+          for i in $(seq 1 20); do
+            if docker exec receptionist /venv/bin/python \
+              -c "import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8700/health').status == 200"; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs receptionist
+          exit 1
+
+      - name: OWASP ZAP Baseline
         run: |
           mkdir -p reports
           chmod 777 reports
@@ -133,7 +156,7 @@ jobs:
             -v "$PWD/reports:/zap/wrk:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
-              -t http://receptionist:8700 \
+              -t http://receptionist:8700/health \
               -m 1 \
               -I \
               -r zap-report.html \
@@ -147,7 +170,7 @@ jobs:
           path: reports/
           retention-days: 30
 
-      - name: Show application logs
+      - name: Application logs on failure
         if: failure()
         run: docker logs receptionist
 
